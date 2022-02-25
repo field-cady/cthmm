@@ -9,6 +9,7 @@ This is the main file.
 
 import numpy as np
 from scipy.linalg import fractional_matrix_power, expm
+from numpy.linalg import inv
 import pandas as pd
 import time
 
@@ -27,6 +28,7 @@ class BaseCTHMM:
                  end_probs=None
                 ):
         # Either pass in the # of states, or a list of what the states are called
+        assert((n_states is not None) or (Q is not None))
         if states is None and n_states is None:
             assert(Q is not None)
             self.n_states = Q.shape[0]
@@ -63,6 +65,50 @@ class BaseCTHMM:
         state_seq, probs_array = forward_backward(observation_probs, self.Q, times, start_probs=self.start_probs, end_probs=self.end_probs)
         if include_probs: return state_seq, probs_array
         else: return state_seq
+    def interpolate(self, observations, times, times_to_interp):
+        # Interpolate times later than or equal to times[0]
+        observation_probs = self.get_observation_probs(observations)
+        state_seq, probs_array = forward_backward(observation_probs, self.Q, times, start_probs=self.start_probs, end_probs=self.end_probs)
+        guesses = []
+        i_known, i_interp = 0, 0
+        start_probs = probs_array[0].flatten()
+        end_probs = probs_array[-1].flatten()
+        start_time, end_time = times[0], times[len(times)-1]
+        while i_interp<len(times_to_interp):
+            t_interp = times_to_interp[i_interp]
+            if t_interp<start_time:
+                # interp backward from first guess
+                dT = times[0]-t_interp
+                trans_mat = expm(dT*self.Q)
+                guess_probs = np.matmul(start_probs, inv(trans_mat))
+                guesses.append(guess_probs)
+                i_interp += 1
+            elif t_interp<end_time:
+                #print('foo', t_interp, end_time, i_known, times[i_known], times[i_known+1])
+                if t_interp<times[i_known]: i_known+=1
+                elif times[i_known+1]<t_interp: i_known+=1
+                else:
+                    # t_interp between times[i_known] and times[i_known+1]
+                    dT1 = t_interp-times[i_known]
+                    dT2 = times[i_known+1]-t_interp
+                    #print('\n', i_known, dT1, dT2)
+                    trans_mat1 = expm(dT1*self.Q)
+                    trans_mat2 = expm(dT2*self.Q)
+                    guess_probs1 = np.matmul(probs_array[i_known].flatten(), trans_mat1)
+                    guess_probs2 = np.matmul(probs_array[i_known+1].flatten(), inv(trans_mat2))
+                    #print(guess_probs1)
+                    #print(guess_probs2)
+                    guess_probs = (dT2*guess_probs1 + dT1*guess_probs2) / (dT1+dT2)
+                    guesses.append(guess_probs)
+                    i_interp += 1
+            else:
+                # interp forward from last guess
+                dT = t_interp-end_time
+                trans_mat = expm(dT*self.Q)
+                guess_probs = np.matmul(end_probs, trans_mat)
+                guesses.append(guess_probs)
+                i_interp += 1
+        return np.array(guesses)            
     def get_logprob(self, observations, states, times):
         observation_probs = self.get_observation_probs(observations)
         return get_logprob(observation_probs, states, times, Q=self.Q, start_probs=self.start_probs)
@@ -130,7 +176,7 @@ class BaseCTHMM:
                 start_probs_ = start_probs_new_ / sum(start_probs_new_)
                 end_probs_ = end_probs_new_ / sum(end_probs_new_)
             if delt < tol: break
-            if i==max_iter-1: print(f'WARNING: max iterations ({max_iter}) exceeded.  failed to converge')
+            #if i==max_iter-1: print(f'WARNING: max iterations ({max_iter}) exceeded.  failed to converge')
         end_time = time.time()
         if progress: print(f'Updated emission_probs.  time={round(end_time-start_time)}sec\n', self.emission_probs)
     def fit(self, observations_times_pairs, fit_start_probs=False, max_iter=10, tol=1e-5, progress=True):
@@ -157,11 +203,11 @@ class BaseCTHMM:
         raise NotImplemented
 
 class MultinomialCTHMM(BaseCTHMM):
+    ''' foo '''
     def __init__(self,
                  # States
                  n_states=None,
                  states=None,
-                 n_emissions=None,
                  # Transitions
                  Q=None,
                  mean_holding_times=None,
@@ -169,6 +215,7 @@ class MultinomialCTHMM(BaseCTHMM):
                  start_probs=None,
                  end_probs=None,
                  # Emissions
+                 n_emissions=None,
                  emission_probs=None,
                  seed=42
                 ):
