@@ -65,6 +65,12 @@ class BaseCTHMM:
         state_seq, probs_array = forward_backward(observation_probs, self.Q, times, start_probs=self.start_probs, end_probs=self.end_probs)
         if include_probs: return state_seq, probs_array
         else: return state_seq
+    def interpolate_forward(self, x, dT):
+        trans_mat = expm(dT*self.Q)
+        return np.matmul(trans_mat, x)
+    def interpolate_backward(self, x, dT):
+        trans_mat = expm(dT*self.Q.T)
+        return np.matmul(trans_mat, x)
     def interpolate(self, observations, times, times_to_interp):
         # Interpolate times later than or equal to times[0]
         observation_probs = self.get_observation_probs(observations)
@@ -79,8 +85,7 @@ class BaseCTHMM:
             if t_interp<start_time:
                 # interp backward from first guess
                 dT = times[0]-t_interp
-                trans_mat = expm(dT*self.Q)
-                guess_probs = np.matmul(start_probs, inv(trans_mat))
+                guess_probs = self.interpolate_backward(start_probs, dT)
                 guesses.append(guess_probs)
                 i_interp += 1
             elif t_interp<end_time:
@@ -91,21 +96,15 @@ class BaseCTHMM:
                     # t_interp between times[i_known] and times[i_known+1]
                     dT1 = t_interp-times[i_known]
                     dT2 = times[i_known+1]-t_interp
-                    #print('\n', i_known, dT1, dT2)
-                    trans_mat1 = expm(dT1*self.Q)
-                    trans_mat2 = expm(dT2*self.Q)
-                    guess_probs1 = np.matmul(probs_array[i_known].flatten(), trans_mat1)
-                    guess_probs2 = np.matmul(probs_array[i_known+1].flatten(), inv(trans_mat2))
-                    #print(guess_probs1)
-                    #print(guess_probs2)
+                    guess_probs1 = self.interpolate_forward(probs_array[i_known].flatten(), dT1)
+                    guess_probs2 = self.interpolate_forward(probs_array[i_known+1].flatten(), dT1)\
                     guess_probs = (dT2*guess_probs1 + dT1*guess_probs2) / (dT1+dT2)
                     guesses.append(guess_probs)
                     i_interp += 1
             else:
                 # interp forward from last guess
                 dT = t_interp-end_time
-                trans_mat = expm(dT*self.Q)
-                guess_probs = np.matmul(end_probs, trans_mat)
+                guess_probs = self.interpolate_backward(end_probs, dT)
                 guesses.append(guess_probs)
                 i_interp += 1
         return np.array(guesses)            
@@ -203,7 +202,7 @@ class BaseCTHMM:
         raise NotImplemented
 
 class MultinomialCTHMM(BaseCTHMM):
-    ''' foo '''
+    ''' Observations are multinomial with values ranging from 0 to k-1 '''
     def __init__(self,
                  # States
                  n_states=None,
@@ -268,11 +267,13 @@ class MultinomialCTHMM(BaseCTHMM):
         return f'** Q:\n{self.Q}\n** Emission probs:\n{self.emission_probs}'
 
 
+
 #
 # Core Decoding Algorithms
 #
 
 def viterbi(observation_probs, Q, times, start_probs=None, progress=False):
+    assert(start_probs is not None, "Error: you must specify start_probs")
     n_observations, n_states = observation_probs.shape
     # Take logs for numerical stability
     observation_scores = np.log(observation_probs)
@@ -300,6 +301,8 @@ def viterbi(observation_probs, Q, times, start_probs=None, progress=False):
     return np.flip(states_in_reverse).astype(int)
 
 def forward_backward(observation_probs, Q, times, start_probs=None, end_probs=None, progress=False):
+    assert(start_probs is not None, "Error: you must specify start_probs")
+    assert(end_probs is not None, "Error: you must specify end_probs")
     n_observations, n_states = observation_probs.shape
     # Forward - compute Pr[si | j<i]
     forward_probs = np.zeros((n_observations, n_states))
@@ -350,7 +353,8 @@ def _holding_times_to_rate_matrix(mean_holding_times):
 
 
 def _runs_iter(states, times, avg_holding_times):
-    # yield start_idx, state S, estimated time in S, next_state (if we can guess it)
+    ''' yield start_idx, state S, estimated time in S, next_state (if we can guess it)
+    '''
     i = 0
     start_idx = 0
     start_time = times[i]
@@ -414,6 +418,8 @@ def fit_Q_1seq(state_seq, times, start_Q=None, n_states=None):
     return Q_
 
 def get_logprob(observation_probs, states, times, Q, start_probs=None):
+    ''' Return LogProb of a sequence of states and observations
+    '''
     n_observations = observation_probs.shape[0]#len(observations)
     n_states = Q.shape[0]
     # Take logs for numerical stability
@@ -429,13 +435,16 @@ def get_logprob(observation_probs, states, times, Q, start_probs=None):
     return logprob
 
 def random_Q(n_states):
+    ''' Generate random Q matrix for n_states.  Avg holding time ~1 unit of time.
+    '''
     X = np.random.beta(1,1,n_states*n_states).reshape((n_states, n_states))
     np.fill_diagonal(X, 0.0)
     diag = -1*np.diag(X.sum(axis=1))
     return X + diag
 
 def default_Q(n_states, holding_time=1.0):
-    X = np.ones((n_states, n_states)) / (n_states-1)
+    ''' Generate uniform Q matrix for n_states.  Avg holding time =1 unit of time.
+    '''    X = np.ones((n_states, n_states)) / (n_states-1)
     np.fill_diagonal(X, -1)
     return X / holding_time
 

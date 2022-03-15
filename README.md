@@ -24,6 +24,10 @@ The main functionalities are to:
 * Given a sequence of observations and timestamps, use a fitted CT-HMM to decode the underlying states
     at each timestamp
 
+# TODO Items
+* Support from Gaussian CT-HMMs by inheriting from BaseCTHMM class
+* Allowing human-readable names for states
+
 
 # WTF is a continuous-time hidden markov model?
 
