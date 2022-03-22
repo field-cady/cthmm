@@ -57,6 +57,10 @@ class BaseCTHMM:
         else: self.start_probs = np.ones((n_states,))/n_states
         if end_probs is not None: self.end_probs=end_probs
         else: self.end_probs = np.ones((n_states,))/n_states
+    def predict(self, observations, times, algorithm='viterbi'):
+        if algorithm=='viterbi': return self.viterbi(observations, times)
+        elif algorithm=='map': return self.forward_backward(observations, times, include_probs=False)
+        else raise NotImplemented("Only 'viterbi' and 'map' algorithms are supported by predict() function")
     def viterbi(self, observations, times):
         observation_probs = self.get_observation_probs(observations)
         return viterbi(observation_probs, self.Q, times, start_probs=self.start_probs)
@@ -97,7 +101,7 @@ class BaseCTHMM:
                     dT1 = t_interp-times[i_known]
                     dT2 = times[i_known+1]-t_interp
                     guess_probs1 = self.interpolate_forward(probs_array[i_known].flatten(), dT1)
-                    guess_probs2 = self.interpolate_forward(probs_array[i_known+1].flatten(), dT1)\
+                    guess_probs2 = self.interpolate_forward(probs_array[i_known+1].flatten(), dT1)
                     guess_probs = (dT2*guess_probs1 + dT1*guess_probs2) / (dT1+dT2)
                     guesses.append(guess_probs)
                     i_interp += 1
@@ -444,7 +448,8 @@ def random_Q(n_states):
 
 def default_Q(n_states, holding_time=1.0):
     ''' Generate uniform Q matrix for n_states.  Avg holding time =1 unit of time.
-    '''    X = np.ones((n_states, n_states)) / (n_states-1)
+    '''
+    X = np.ones((n_states, n_states)) / (n_states-1)
     np.fill_diagonal(X, -1)
     return X / holding_time
 

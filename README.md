@@ -27,9 +27,11 @@ The main functionalities are to:
 # TODO Items
 * Support from Gaussian CT-HMMs by inheriting from BaseCTHMM class
 * Allowing human-readable names for states
+* Performance improvements
+* Unit testing
 
 
-# WTF is a continuous-time hidden markov model?
+# What is a continuous-time hidden markov model?
 
 Say you take somebody's temperate and it's in the normal range.
 In isolation that suggests they are healthy rather than sick.
