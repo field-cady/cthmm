@@ -1,3 +1,7 @@
+'''
+This library was developed at Zeitworks Inc, written by Field Cady.
+'''
+
 import setuptools
 
 with open("README.md", "r", encoding="utf-8") as fh:

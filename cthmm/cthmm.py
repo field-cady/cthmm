@@ -1,5 +1,6 @@
 '''
 This is the main file.
+It was developed at Zeitworks Inc, written by Field Cady.
 
 '''
 
