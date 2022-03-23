@@ -19,57 +19,48 @@ class BaseCTHMM:
                  # States
                  n_states=None,
                  states=None,
-                 # Emissions
-                 emission_probs=None,
                  # Transitions
                  Q=None,
-                 mean_holding_times=None,
                  holding_time=None,
                  start_probs=None,
                  end_probs=None
                 ):
         # Either pass in the # of states, or a list of what the states are called
-        assert((n_states is not None) or (Q is not None))
-        if states is None and n_states is None:
-            assert(Q is not None)
-            self.n_states = Q.shape[0]
-            self.states = [st for st in range(self.n_states)]
+        if (n_states is not None) and (states is not None):
+            self.n_states = n_states
+            self.states = states
+            assert(n_states==len(states))
+        elif n_states is not None:
+            self.n_states = n_states
+            self.states = [s for s in range(n_states)]
         elif states is not None:
-            assert(n_states is None or len(states)==n_states)
-        else:
-            self.states = [st for st in range(n_states)]
-            self.n_states = len(self.states)
+            self.n_states = len(states)
+            self.states = states
+        else: raise Exception('You must specify the number of states or a list of states')
         n_states = self.n_states
         # Either pass in Q or the mean_holding_times, or just a holding_time
-        if holding_time is not None:
-            self.Q = default_Q(self.n_states, holding_time=holding_time)
-        elif mean_holding_times is not None:
-            # mean_holding_times is either a list of times or a map state-->time
-            # either float | pandas.TimeDelta | string
-            assert(len(mean_holding_times) == self.n_states)
-            if isinstance(mean_holding_times, dict):
-                mean_holding_times = [mean_holding_times[st] for st in self.states]
-            self.Q = _holding_times_to_rate_matrix(mean_holding_times)
-        else:
-            assert(Q is not None)
-            self.Q = Q
+        if Q is not None: self.Q = Q
+        elif holding_time is not None: self.Q = default_Q(self.n_states, holding_time=holding_time)
+        else: raise Exception('You must specify Q or the avg holding time')
         # start/end probs
         if start_probs is not None: self.start_probs=start_probs
         else: self.start_probs = np.ones((n_states,))/n_states
         if end_probs is not None: self.end_probs=end_probs
         else: self.end_probs = np.ones((n_states,))/n_states
     def predict(self, observations, times, algorithm='viterbi'):
+        algorithm = algorithm.lower()
         if algorithm=='viterbi': return self.viterbi(observations, times)
-        elif algorithm=='map': return self.forward_backward(observations, times, include_probs=False)
-        else raise NotImplemented("Only 'viterbi' and 'map' algorithms are supported by predict() function")
+        elif algorithm in ['map', 'fb', 'forward-backward', 'forward/backward', 'forward_backward']:
+            seq, probs = self.forward_backward(observations, times)
+            return seq
+        else: raise NotImplemented("Only 'viterbi' and 'map' algorithms are supported by predict() function")
     def viterbi(self, observations, times):
         observation_probs = self.get_observation_probs(observations)
         return viterbi(observation_probs, self.Q, times, start_probs=self.start_probs)
-    def forward_backward(self, observations, times, include_probs=True):
+    def forward_backward(self, observations, times):
         observation_probs = self.get_observation_probs(observations)
         state_seq, probs_array = forward_backward(observation_probs, self.Q, times, start_probs=self.start_probs, end_probs=self.end_probs)
-        if include_probs: return state_seq, probs_array
-        else: return state_seq
+        return state_seq, probs_array
     def interpolate_forward(self, x, dT):
         trans_mat = expm(dT*self.Q)
         return np.matmul(trans_mat, x)
@@ -214,7 +205,6 @@ class MultinomialCTHMM(BaseCTHMM):
                  states=None,
                  # Transitions
                  Q=None,
-                 mean_holding_times=None,
                  holding_time=None,
                  start_probs=None,
                  end_probs=None,
@@ -225,7 +215,6 @@ class MultinomialCTHMM(BaseCTHMM):
                 ):
         # Set all the stuff for state(s) ad their transitions
         super().__init__(n_states=n_states, states=states, Q=Q,
-                         mean_holding_times=mean_holding_times,
                           holding_time=holding_time, start_probs=start_probs, end_probs=end_probs)
         # Mutinomial Specific
         if n_emissions is not None: self.n_emissions = n_emissions
@@ -278,7 +267,6 @@ class MultinomialCTHMM(BaseCTHMM):
 #
 
 def viterbi(observation_probs, Q, times, start_probs=None, progress=False):
-    assert(start_probs is not None, "Error: you must specify start_probs")
     n_observations, n_states = observation_probs.shape
     # Take logs for numerical stability
     observation_scores = np.log(observation_probs)
@@ -306,8 +294,6 @@ def viterbi(observation_probs, Q, times, start_probs=None, progress=False):
     return np.flip(states_in_reverse).astype(int)
 
 def forward_backward(observation_probs, Q, times, start_probs=None, end_probs=None, progress=False):
-    assert(start_probs is not None, "Error: you must specify start_probs")
-    assert(end_probs is not None, "Error: you must specify end_probs")
     n_observations, n_states = observation_probs.shape
     # Forward - compute Pr[si | j<i]
     forward_probs = np.zeros((n_observations, n_states))
@@ -452,5 +438,7 @@ def default_Q(n_states, holding_time=1.0):
     '''
     X = np.ones((n_states, n_states)) / (n_states-1)
     np.fill_diagonal(X, -1)
+    try: holding_time = np.array(holding_time).reshape((n_states,1))
+    except: pass
     return X / holding_time
 
