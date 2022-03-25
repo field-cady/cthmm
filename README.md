@@ -25,9 +25,9 @@ The main functionalities are to:
     at each timestamp
 
 # TODO Items
-* Support from Gaussian CT-HMMs by inheriting from BaseCTHMM class
+* Support for GaussianCTHMM and ExponentialCTHMM by inheriting from BaseCTHMM class
 * Allowing human-readable names for states
-* Performance improvements
+* Performance improvements, possibly by converting to C or Cython
 * Unit testing
 
 

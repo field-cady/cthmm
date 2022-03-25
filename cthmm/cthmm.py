@@ -22,8 +22,8 @@ class BaseCTHMM:
                  # Transitions
                  Q=None,
                  holding_time=None,
-                 start_probs=None,
-                 end_probs=None
+                 startprob=None,
+                 endprob=None
                 ):
         # Either pass in the # of states, or a list of what the states are called
         if (n_states is not None) and (states is not None):
@@ -43,45 +43,70 @@ class BaseCTHMM:
         elif holding_time is not None: self.Q = default_Q(self.n_states, holding_time=holding_time)
         else: raise Exception('You must specify Q or the avg holding time')
         # start/end probs
-        if start_probs is not None: self.start_probs=start_probs
-        else: self.start_probs = np.ones((n_states,))/n_states
-        if end_probs is not None: self.end_probs=end_probs
-        else: self.end_probs = np.ones((n_states,))/n_states
+        if startprob is not None: self.startprob=startprob
+        else: self.startprob = np.ones((n_states,))/n_states
+        if endprob is not None: self.endprob=endprob
+        else: self.endprob = np.ones((n_states,))/n_states
+        # Make sure everything is self-consistent
+        assert(len(self.startprob)==self.n_states, 'Len of startprob must equal # states')
+        assert(len(self.endprob)==self.n_states, 'Len of endprob must equal # states')
+    def get_stationary_distribution(self):
+        max_holding_time = -1.0/self.Q.diagonal().max()
+        LONG_TIME = 1000*max_holding_time
+        trans_probs = expm(LONG_TIME*self.Q)
+        return trans_probs[0,:].reshape((self.n_states, ))
+    def simulate(self, n=100, seed=None, sample_dt = np.random.random):
+        '''Return DataFrame giving timestamps, underlying state, and emission at the time.
+        '''
+        if seed: np.random.seed(seed)
+        states = np.array(range(self.n_states))
+        t = 0
+        probs = self.startprob
+        state_vec = 0*states
+        time_seq, state_seq, observation_seq = [], [], []
+        for i in range(n):
+            st = np.random.choice(states, p=probs/sum(probs))
+            state_vec *= 0
+            state_vec[st] = 1
+            observation = self.get_observation(st)
+            time_seq.append(t); state_seq.append(st); observation_seq.append(observation)
+            dT = sample_dt()#[0]
+            t += dT
+            diff = expm(dT*self.Q)
+            new_probs = np.matmul(state_vec, diff)
+            probs = new_probs
+        return pd.DataFrame({'time':time_seq, 'state':state_seq, 'emission':observation_seq})
+    # Predicting / decoding
     def predict(self, observations, times, algorithm='viterbi'):
         algorithm = algorithm.lower()
-        if algorithm=='viterbi': return self.viterbi(observations, times)
+        if algorithm=='viterbi':
+            observation_probs = self.get_observation_probs(observations)
+            return viterbi(observation_probs, self.Q, times, startprob=self.startprob)
         elif algorithm in ['map', 'fb', 'forward-backward', 'forward/backward', 'forward_backward']:
-            seq, probs = self.forward_backward(observations, times)
-            return seq
+            observation_probs = self.get_observation_probs(observations)
+            state_seq, probs_array = forward_backward(
+                observation_probs, self.Q, times, startprob=self.startprob, endprob=self.endprob)
+            return state_seq
         else: raise NotImplemented("Only 'viterbi' and 'map' algorithms are supported by predict() function")
-    def viterbi(self, observations, times):
+    def predict_proba(self, observations, times, algorithm='viterbi'):
         observation_probs = self.get_observation_probs(observations)
-        return viterbi(observation_probs, self.Q, times, start_probs=self.start_probs)
-    def forward_backward(self, observations, times):
-        observation_probs = self.get_observation_probs(observations)
-        state_seq, probs_array = forward_backward(observation_probs, self.Q, times, start_probs=self.start_probs, end_probs=self.end_probs)
-        return state_seq, probs_array
-    def interpolate_forward(self, x, dT):
-        trans_mat = expm(dT*self.Q)
-        return np.matmul(trans_mat, x)
-    def interpolate_backward(self, x, dT):
-        trans_mat = expm(dT*self.Q.T)
-        return np.matmul(trans_mat, x)
+        state_seq, probs_array = forward_backward(observation_probs, self.Q, times, startprob=self.startprob, endprob=self.endprob)
+        return probs_array
     def interpolate(self, observations, times, times_to_interp):
         # Interpolate times later than or equal to times[0]
         observation_probs = self.get_observation_probs(observations)
-        state_seq, probs_array = forward_backward(observation_probs, self.Q, times, start_probs=self.start_probs, end_probs=self.end_probs)
+        state_seq, probs_array = forward_backward(observation_probs, self.Q, times, startprob=self.startprob, endprob=self.endprob)
         guesses = []
         i_known, i_interp = 0, 0
-        start_probs = probs_array[0].flatten()
-        end_probs = probs_array[-1].flatten()
+        startprob = probs_array[0].flatten()
+        endprob = probs_array[-1].flatten()
         start_time, end_time = times[0], times[len(times)-1]
         while i_interp<len(times_to_interp):
             t_interp = times_to_interp[i_interp]
             if t_interp<start_time:
                 # interp backward from first guess
                 dT = times[0]-t_interp
-                guess_probs = self.interpolate_backward(start_probs, dT)
+                guess_probs = self.interpolate_backward(startprob, dT)
                 guesses.append(guess_probs)
                 i_interp += 1
             elif t_interp<end_time:
@@ -100,34 +125,38 @@ class BaseCTHMM:
             else:
                 # interp forward from last guess
                 dT = t_interp-end_time
-                guess_probs = self.interpolate_backward(end_probs, dT)
+                guess_probs = self.interpolate_backward(endprob, dT)
                 guesses.append(guess_probs)
                 i_interp += 1
         return np.array(guesses)            
+    def interpolate_forward(self, x, dT):
+        trans_mat = expm(dT*self.Q)
+        return np.matmul(trans_mat, x)
+    def interpolate_backward(self, x, dT):
+        trans_mat = expm(dT*self.Q.T)
+        return np.matmul(trans_mat, x)
     def get_logprob(self, observations, states, times):
         observation_probs = self.get_observation_probs(observations)
-        return get_logprob(observation_probs, states, times, Q=self.Q, start_probs=self.start_probs)
-    def simulate(self, n=100, seed=None, sample_dt = np.random.random):
-        '''Return DataFrame giving timestamps, underlying state, and emission at the time.
-        '''
-        if seed: np.random.seed(seed)
-        states = np.array(range(self.n_states))
-        t = 0
-        probs = self.start_probs
-        state_vec = 0*states
-        time_seq, state_seq, observation_seq = [], [], []
-        for i in range(n):
-            st = np.random.choice(states, p=probs/sum(probs))
-            state_vec *= 0
-            state_vec[st] = 1
-            observation = self.get_observation(st)
-            time_seq.append(t); state_seq.append(st); observation_seq.append(observation)
-            dT = sample_dt()#[0]
-            t += dT
-            diff = expm(dT*self.Q)
-            new_probs = np.matmul(state_vec, diff)
-            probs = new_probs
-        return pd.DataFrame({'time':time_seq, 'state':state_seq, 'emission':observation_seq})
+        return get_logprob(observation_probs, states, times, Q=self.Q, startprob=self.startprob)
+    # Fitting
+    def fit(self, observations_times_pairs, fit_startprob=False, max_iter=10, tol=1e-5, verbose=False):
+        """
+            Fit the model (matrix Q and Pr[obs|state], and optionally the start/end probs) to a
+            List of (observations, timestamps) pairs.
+        """
+        if verbose: print(self)
+        for i in range(max_iter):
+            if verbose: print('\nIteration', i)
+            prev_Q = self.Q
+            delt = 0
+            self.fit_observation_params(observations_times_pairs, verbose=verbose)
+            self.fit_Q(observations_times_pairs, progress=verbose)
+            delt += ((self.Q-prev_Q)**2).sum().sum()
+            if verbose: print(self)
+            if delt<tol:
+                if verbose: print('Delta < tolerance.  Converged!')
+                break
+            if i==max_iter-1: print(f'WARNING: failure to converge.  delta={delt}')
     def fit_Q(self, observations_times_pairs, progress=False):
         n_total_obs = sum(len(obs) for obs, times in observations_times_pairs)
         Q_ = self.Q.copy()
@@ -135,63 +164,46 @@ class BaseCTHMM:
         n_observations_total_ = 0
         for observations, times in observations_times_pairs:
             observation_probs = self.get_observation_probs(observations)
-            #state_seq, state_probs = forward_backward(observation_probs, Q_, times, start_probs=self.start_probs, end_probs=self.end_probs)
-            state_seq = viterbi(observation_probs, Q_, times, start_probs=self.start_probs)
+            #state_seq, state_probs = forward_backward(observation_probs, Q_, times, startprob=self.startprob, endprob=self.endprob)
+            state_seq = viterbi(observation_probs, Q_, times, startprob=self.startprob)
             Q_partial_ = fit_Q_1seq(state_seq, times, start_Q=Q_)
             Q_total_ += len(observations)*Q_partial_
             n_observations_total_ += len(observations)
         self.Q = Q_total_ / n_observations_total_
-    def fit_observation_params(self, observations_times_pairs, fit_start_probs=False, progress=True, max_iter=5, seed=None, tol=1e-6,):
+    def fit_observation_params(self, observations_times_pairs, fit_startprob=False, verbose=True, max_iter=5, seed=None, tol=1e-6,):
         """
             Uses Baum-Welch algorithm to fit observation parameters to a collection of observation sequences.
-            If optional argument fit_start_probs=True (default False) then it will also fit the start/end
+            If optional argument fit_startprob=True (default False) then it will also fit the start/end
             probabilities (which are 1/n_states otherwise).
         """
         # Fits emission probabilities.  Currently does NOT fit the start/end probs
-        if progress: print(f'Starting emission_probs:\n', self.emission_probs)   
+        if verbose: print(f'Starting emission_probs:\n', self.emission_probs)   
         start_time = time.time()
-        start_probs_ = self.start_probs
-        end_probs_ = self.end_probs
+        startprob_ = self.startprob
+        endprob_ = self.endprob
         for i in range(max_iter):
-            start_probs_new_ = 0*self.start_probs
-            end_probs_new_ = 0*self.end_probs
+            startprob_new_ = 0*self.startprob
+            endprob_new_ = 0*self.endprob
             observations_lst, state_prob_arrays_lst = [], []
             for observations, times in observations_times_pairs:
                 observation_probs_ = self.get_observation_probs(observations)
                 fw_seq_, state_probs_ = forward_backward(observation_probs_, self.Q, times,
-                                                               start_probs=self.start_probs, end_probs=end_probs_)
+                                                               startprob=self.startprob, endprob=endprob_)
                 observations_lst.append(observations)
                 state_prob_arrays_lst.append(state_probs_)
-                start_probs_new_ += state_probs_[0,:]
-                end_probs_new_ += state_probs_[-1,:]
+                startprob_new_ += state_probs_[0,:]
+                endprob_new_ += state_probs_[-1,:]
             combo_observations = np.concatenate(observations_lst, axis=0)
             combo_state_probs = np.concatenate(state_prob_arrays_lst, axis=0)
             delt = self.fit_observation_params_mle(combo_observations, combo_state_probs)
-            if fit_start_probs:
-                start_probs_ = start_probs_new_ / sum(start_probs_new_)
-                end_probs_ = end_probs_new_ / sum(end_probs_new_)
+            if fit_startprob:
+                startprob_ = startprob_new_ / sum(startprob_new_)
+                endprob_ = endprob_new_ / sum(endprob_new_)
             if delt < tol: break
             #if i==max_iter-1: print(f'WARNING: max iterations ({max_iter}) exceeded.  failed to converge')
         end_time = time.time()
-        if progress: print(f'Updated emission_probs.  time={round(end_time-start_time)}sec\n', self.emission_probs)
-    def fit(self, observations_times_pairs, fit_start_probs=False, max_iter=10, tol=1e-5, progress=True):
-        """
-            Fit the model (matrix Q and Pr[obs|state], and optionally the start/end probs) to a
-            List of (observations, timestamps) pairs.
-        """
-        if progress: print(self)
-        for i in range(max_iter):
-            if progress: print('\nIteration', i)
-            prev_Q = self.Q
-            delt = 0
-            self.fit_observation_params(observations_times_pairs, progress=progress)
-            self.fit_Q(observations_times_pairs, progress=progress)
-            delt += ((self.Q-prev_Q)**2).sum().sum()
-            if progress: print(self)
-            if delt<tol:
-                if progress: print('Delta < tolerance.  Converged!')
-                break
-            if i==max_iter-1: print(f'WARNING: failure to converge.  delta={delt}')
+        if verbose: print(f'Updated emission_probs.  time={round(end_time-start_time)}sec\n', self.emission_probs)
+    # To be implemented
     def get_observation_probs(self, observations):
         raise NotImplemented
     def get_observation(self, st):
@@ -206,8 +218,8 @@ class MultinomialCTHMM(BaseCTHMM):
                  # Transitions
                  Q=None,
                  holding_time=None,
-                 start_probs=None,
-                 end_probs=None,
+                 startprob=None,
+                 endprob=None,
                  # Emissions
                  n_emissions=None,
                  emission_probs=None,
@@ -215,7 +227,7 @@ class MultinomialCTHMM(BaseCTHMM):
                 ):
         # Set all the stuff for state(s) ad their transitions
         super().__init__(n_states=n_states, states=states, Q=Q,
-                          holding_time=holding_time, start_probs=start_probs, end_probs=end_probs)
+                          holding_time=holding_time, startprob=startprob, endprob=endprob)
         # Mutinomial Specific
         if n_emissions is not None: self.n_emissions = n_emissions
         else: self.n_emissions = emission_probs.shape[1]
@@ -262,11 +274,12 @@ class MultinomialCTHMM(BaseCTHMM):
 
 
 
+
 #
 # Core Decoding Algorithms
 #
 
-def viterbi(observation_probs, Q, times, start_probs=None, progress=False):
+def viterbi(observation_probs, Q, times, startprob=None, progress=False):
     n_observations, n_states = observation_probs.shape
     # Take logs for numerical stability
     observation_scores = np.log(observation_probs)
@@ -274,7 +287,7 @@ def viterbi(observation_probs, Q, times, start_probs=None, progress=False):
     n_steps, n_states = observation_probs.shape
     scores_trellis = np.zeros(observation_probs.shape)
     prev_state_trellis = np.zeros(observation_probs.shape)
-    scores_trellis[0,:]=observation_scores[0,:]+np.log(start_probs)
+    scores_trellis[0,:]=observation_scores[0,:]+np.log(startprob)
     # Populate trellis diagram
     for i in range(1, n_steps):
         dt = times[i]-times[i-1]
@@ -293,12 +306,12 @@ def viterbi(observation_probs, Q, times, start_probs=None, progress=False):
         states_in_reverse.append(prev_s)
     return np.flip(states_in_reverse).astype(int)
 
-def forward_backward(observation_probs, Q, times, start_probs=None, end_probs=None, progress=False):
+def forward_backward(observation_probs, Q, times, startprob=None, endprob=None, progress=False):
     n_observations, n_states = observation_probs.shape
     # Forward - compute Pr[si | j<i]
     forward_probs = np.zeros((n_observations, n_states))
     for i in range(n_observations):
-        if i==0: forward_probs[i,:] = start_probs
+        if i==0: forward_probs[i,:] = startprob
         else:
             dt = times[i]-times[i-1]
             trans_probs = expm(dt*Q)
@@ -308,7 +321,7 @@ def forward_backward(observation_probs, Q, times, start_probs=None, end_probs=No
     # Backward - compute Pr[si | j>i]
     backward_probs = np.zeros((n_observations, n_states))
     for i in range(n_observations-1, -1, -1):
-        if i==n_observations-1: backward_probs[i,:] = end_probs
+        if i==n_observations-1: backward_probs[i,:] = endprob
         else:
             dt = times[i+1]-times[i]
             trans_probs = expm(dt*Q)
@@ -408,15 +421,15 @@ def fit_Q_1seq(state_seq, times, start_Q=None, n_states=None):
     Q_ = diag + nondiag
     return Q_
 
-def get_logprob(observation_probs, states, times, Q, start_probs=None):
+def get_logprob(observation_probs, states, times, Q, startprob=None):
     ''' Return LogProb of a sequence of states and observations
     '''
     n_observations = observation_probs.shape[0]#len(observations)
     n_states = Q.shape[0]
     # Take logs for numerical stability
-    if start_probs is None: start_probs = np.ones(n_states) / n_states
+    if startprob is None: startprob = np.ones(n_states) / n_states
     observation_logprobs = np.log(observation_probs)
-    logprob = np.log(start_probs[states[0]])
+    logprob = np.log(startprob[states[0]])
     logprob += observation_probs[states[0], states[0]]
     for i in range(1, n_observations):
         dt = times[i]-times[i-1]
