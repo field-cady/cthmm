@@ -29,6 +29,7 @@ The main functionalities are to:
 * Allowing human-readable names for states
 * Performance improvements, possibly by converting to C or Cython
 * Unit testing
+* Add in some fitting tolerances to reduce overfitting
 
 
 # What is a continuous-time hidden markov model?

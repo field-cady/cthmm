@@ -243,7 +243,7 @@ class MultinomialCTHMM(BaseCTHMM):
     def get_observation_probs(self, observations):
         '''
             Input: list of multinomial observations
-            Output: (n_states, n_emissions) of how likely each observation O is conditioned on state S
+            Output: (n_observation, n_states) of how likely each observation O is conditioned on state S
         '''
         n_observations = len(observations)
         observation_probs = np.zeros((n_observations, self.n_states))
@@ -273,6 +273,63 @@ class MultinomialCTHMM(BaseCTHMM):
         return f'** Q:\n{self.Q}\n** Emission probs:\n{self.emission_probs}'
 
 
+class GaussianCTHMM(BaseCTHMM):
+    ''' Observations are multinomial with values ranging from 0 to k-1 '''
+    def __init__(self,
+                 # States
+                 n_states=None,
+                 states=None,
+                 # Transitions
+                 Q=None,
+                 holding_time=None,
+                 startprob=None,
+                 endprob=None,
+                 # Emissions
+                 means=None,
+                 stds=None
+                ):
+        # Set all the stuff for state(s) ad their transitions
+        super().__init__(n_states=n_states, states=states, Q=Q,
+                          holding_time=holding_time, startprob=startprob, endprob=endprob)
+        # Mutinomial Specific
+        if means: self.means=means
+        else:
+            # Leave everything as None if Means not specified
+            self.means=None
+            self.stds=None
+            return
+        if stds: self.stds=stds
+    def get_observation_probs(self, observations):
+        '''
+            Input: list of observations
+            Output: (n_observations, n_states) of how likely each observation O is conditioned on state S
+        '''
+        n_observations = len(observations)
+        observation_probs = np.zeros((n_observations, self.n_states))
+        for i in range(self.n_states):
+            diffs = observations-self.means[i]
+            observation_probs[:,i] = np.exp(-1*(diffs/self.stds[i])**2)
+        return observation_probs
+    def get_observation(self, st):
+        "Simulate random observation assuming in particular state"
+        return np.random.normal(self.means[st], self.stds[st])
+    def fit_observation_params_mle(self, observations, state_probs):
+        '''
+            Fit observation params for each state to a collection of observations
+            and how likely they were to come from each state.
+            Input: list/array of observations (possibly agg across multiple seriess)
+                    state_probs: n_obs*n_states array of state probs giving Pr[obs|state]
+            Return a delta between old and new params
+        '''
+        #emission_probs_new_ = 0*self.emission_probs
+        #for i, obs in enumerate(observations):
+        #    emission_probs_new_[:,obs] += state_probs[i,:]
+        #emission_probs_new = emission_probs_new_ / emission_probs_new_.sum(axis=1).reshape((self.n_states,1))
+        #delt = ((self.emission_probs-emission_probs_new)**2).sum().sum()
+        #self.emission_probs = emission_probs_new
+        #return delt
+    def __str__(self):
+        return f'** Means:\n{self.means}\n** Deviations:\n{self.stds}'
 
 
 #
