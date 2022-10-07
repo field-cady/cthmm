@@ -11,7 +11,7 @@ setuptools.setup(
     name='cthmm',
     version='0.0.1',
     author='Field Cady',
-    author_email='field@zeitworks.com',
+    author_email='field.cady@gmail.com',
     description='Testing installation of Package',
     long_description=long_description,
     long_description_content_type="text/markdown",
