@@ -5,9 +5,7 @@ This is a python library for training and applying
 They are a simple, but exceptionally powerful tool for extracting
 signal from a stream of noisy data.
 
-It was developed by [Zeitworks Inc](http://www.zeitworks.com),
-particularly by [Field Cady](http://www.fieldcady.com),
-and open-sourced for the benefit of the larger analytics community.
+It was developed by [Field Cady](http://www.fieldcady.com).
 
 # Installation
 You can install from GitHub using:

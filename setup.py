@@ -2,14 +2,14 @@
 This library was developed at Zeitworks Inc, written by Field Cady.
 '''
 
-import setuptools
+from setuptools import setup, find_packages
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-setuptools.setup(
+setup(
     name='cthmm',
-    version='0.0.1',
+    version='0.0.2',
     author='Field Cady',
     author_email='field.cady@gmail.com',
     description='Testing installation of Package',
@@ -20,6 +20,7 @@ setuptools.setup(
     #    "Bug Tracker": "https://github.com/mike-huls/toolbox/issues"
     #},
     license='MIT',
-    packages=['cthmm'],
+    packages=find_packages('src'),
+    package_dir={'': 'src'},
     install_requires=['numpy', 'scipy'],
 )
