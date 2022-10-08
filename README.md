@@ -7,11 +7,6 @@ signal from a stream of noisy data.
 
 It was developed by [Field Cady](http://www.fieldcady.com).
 
-# Installation
-You can install from GitHub using:
-```
-pip install git+https://github.com/field-cady/cthmm.git
-```
 
 # Basic Usage
 
