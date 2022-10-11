@@ -5,6 +5,12 @@ This is a python library for training and applying
 They are a simple, but exceptionally powerful tool for extracting
 signal from a stream of noisy data.
 
+This library is available on [PyPI](https://pypi.org/project/cthmm/)
+and can be installed by
+```
+pip install cthmm
+```
+
 It was developed by [Field Cady](http://www.fieldcady.com).
 
 
