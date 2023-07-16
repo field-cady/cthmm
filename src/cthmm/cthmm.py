@@ -118,14 +118,14 @@ class BaseCTHMM:
                     dT1 = t_interp-times[i_known]
                     dT2 = times[i_known+1]-t_interp
                     guess_probs1 = self.interpolate_forward(probs_array[i_known].flatten(), dT1)
-                    guess_probs2 = self.interpolate_forward(probs_array[i_known+1].flatten(), dT1)
+                    guess_probs2 = self.interpolate_backward(probs_array[i_known+1].flatten(), dT2)
                     guess_probs = (dT2*guess_probs1 + dT1*guess_probs2) / (dT1+dT2)
                     guesses.append(guess_probs)
                     i_interp += 1
             else:
                 # interp forward from last guess
                 dT = t_interp-end_time
-                guess_probs = self.interpolate_backward(endprob, dT)
+                guess_probs = self.interpolate_forward(endprob, dT)
                 guesses.append(guess_probs)
                 i_interp += 1
         return np.array(guesses)            
