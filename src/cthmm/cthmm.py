@@ -131,10 +131,10 @@ class BaseCTHMM:
         return np.array(guesses)
     def interpolate_forward(self, x, dT):
         trans_mat = expm(dT*self.Q)
-        return np.matmul(trans_mat, x)
+        return np.matmul(x, trans_mat)
     def interpolate_backward(self, x, dT):
         trans_mat = expm(-dT*self.Q)
-        return np.matmul(trans_mat, x)
+        return np.matmul(x, trans_mat)
     def get_logprob(self, observations, states, times):
         observation_probs = self.get_observation_probs(observations)
         return get_logprob(observation_probs, states, times, Q=self.Q, startprob=self.startprob)
