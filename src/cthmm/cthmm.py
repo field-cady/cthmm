@@ -9,8 +9,7 @@ It was written by Field Cady.
 #
 
 import numpy as np
-from scipy.linalg import fractional_matrix_power, expm
-from numpy.linalg import inv
+from scipy.linalg import expm
 import pandas as pd
 import time
 
@@ -96,6 +95,8 @@ class BaseCTHMM:
         # Interpolate times later than or equal to times[0]
         observation_probs = self.get_observation_probs(observations)
         state_seq, probs_array = forward_backward(observation_probs, self.Q, times, startprob=self.startprob, endprob=self.endprob)
+        if probs_array.size == 0:
+            return [self.startprob for _ in times_to_interp]
         guesses = []
         i_known, i_interp = 0, 0
         startprob = probs_array[0].flatten()
@@ -105,36 +106,35 @@ class BaseCTHMM:
             t_interp = times_to_interp[i_interp]
             if t_interp<start_time:
                 # interp backward from first guess
-                dT = times[0]-t_interp
+                dT = start_time-t_interp
                 guess_probs = self.interpolate_backward(startprob, dT)
                 guesses.append(guess_probs)
                 i_interp += 1
             elif t_interp<end_time:
                 #print('foo', t_interp, end_time, i_known, times[i_known], times[i_known+1])
-                if t_interp<times[i_known]: i_known+=1
-                elif times[i_known+1]<t_interp: i_known+=1
+                if times[i_known+1]<t_interp: i_known+=1
                 else:
                     # t_interp between times[i_known] and times[i_known+1]
                     dT1 = t_interp-times[i_known]
                     dT2 = times[i_known+1]-t_interp
                     guess_probs1 = self.interpolate_forward(probs_array[i_known].flatten(), dT1)
-                    guess_probs2 = self.interpolate_forward(probs_array[i_known+1].flatten(), dT1)
-                    guess_probs = (dT2*guess_probs1 + dT1*guess_probs2) / (dT1+dT2)
+                    guess_probs2 = self.interpolate_backward(probs_array[i_known+1].flatten(), dT2)
+                    guess_probs = (dT2*dT2*guess_probs1 + dT1*dT1*guess_probs2) / (dT1*dT1+dT2*dT2)
                     guesses.append(guess_probs)
                     i_interp += 1
             else:
                 # interp forward from last guess
                 dT = t_interp-end_time
-                guess_probs = self.interpolate_backward(endprob, dT)
+                guess_probs = self.interpolate_forward(endprob, dT)
                 guesses.append(guess_probs)
                 i_interp += 1
-        return np.array(guesses)            
+        return np.array(guesses)
     def interpolate_forward(self, x, dT):
         trans_mat = expm(dT*self.Q)
-        return np.matmul(trans_mat, x)
+        return np.matmul(x, trans_mat)
     def interpolate_backward(self, x, dT):
-        trans_mat = expm(dT*self.Q.T)
-        return np.matmul(trans_mat, x)
+        trans_mat = expm(-dT*self.Q)
+        return np.matmul(x, trans_mat)
     def get_logprob(self, observations, states, times):
         observation_probs = self.get_observation_probs(observations)
         return get_logprob(observation_probs, states, times, Q=self.Q, startprob=self.startprob)
@@ -177,7 +177,7 @@ class BaseCTHMM:
             probabilities (which are 1/n_states otherwise).
         """
         # Fits emission probabilities.  Currently does NOT fit the start/end probs
-        if verbose: print(f'Starting emission_probs:\n', self.emission_probs)   
+        if verbose: print(f'Starting emission_probs:\n', self.emission_probs)
         start_time = time.time()
         startprob_ = self.startprob
         endprob_ = self.endprob
@@ -274,7 +274,7 @@ class MultinomialCTHMM(BaseCTHMM):
 
 
 class GaussianCTHMM(BaseCTHMM):
-    ''' Observations are multinomial with values ranging from 0 to k-1 '''
+    ''' Observations are real-valued '''
     def __init__(self,
                  # States
                  n_states=None,
@@ -400,7 +400,7 @@ def _holding_times_to_rate_matrix(mean_holding_times):
     Used when you are too lazy/ignorant to figure out a rate of
     probability flow from all states X-->Y.
     Instead all you know is how long on average each state lasts.
-    
+
     Input: list of avg holding times for each state
     Output: Q matrix with those holding times, where state S flows equally fast to all other states
     '''
