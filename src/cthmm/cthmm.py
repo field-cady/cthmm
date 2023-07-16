@@ -9,8 +9,7 @@ It was written by Field Cady.
 #
 
 import numpy as np
-from scipy.linalg import fractional_matrix_power, expm
-from numpy.linalg import inv
+from scipy.linalg import expm
 import pandas as pd
 import time
 
