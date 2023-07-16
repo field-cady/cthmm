@@ -133,7 +133,7 @@ class BaseCTHMM:
         trans_mat = expm(dT*self.Q)
         return np.matmul(trans_mat, x)
     def interpolate_backward(self, x, dT):
-        trans_mat = expm(dT*self.Q.T)
+        trans_mat = expm(-dT*self.Q)
         return np.matmul(trans_mat, x)
     def get_logprob(self, observations, states, times):
         observation_probs = self.get_observation_probs(observations)
