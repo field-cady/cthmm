@@ -105,7 +105,7 @@ class BaseCTHMM:
             t_interp = times_to_interp[i_interp]
             if t_interp<start_time:
                 # interp backward from first guess
-                dT = times[0]-t_interp
+                dT = start_time-t_interp
                 guess_probs = self.interpolate_backward(startprob, dT)
                 guesses.append(guess_probs)
                 i_interp += 1
@@ -127,7 +127,7 @@ class BaseCTHMM:
                 guess_probs = self.interpolate_forward(endprob, dT)
                 guesses.append(guess_probs)
                 i_interp += 1
-        return np.array(guesses)            
+        return np.array(guesses)
     def interpolate_forward(self, x, dT):
         trans_mat = expm(dT*self.Q)
         return np.matmul(trans_mat, x)
@@ -176,7 +176,7 @@ class BaseCTHMM:
             probabilities (which are 1/n_states otherwise).
         """
         # Fits emission probabilities.  Currently does NOT fit the start/end probs
-        if verbose: print(f'Starting emission_probs:\n', self.emission_probs)   
+        if verbose: print(f'Starting emission_probs:\n', self.emission_probs)
         start_time = time.time()
         startprob_ = self.startprob
         endprob_ = self.endprob
@@ -399,7 +399,7 @@ def _holding_times_to_rate_matrix(mean_holding_times):
     Used when you are too lazy/ignorant to figure out a rate of
     probability flow from all states X-->Y.
     Instead all you know is how long on average each state lasts.
-    
+
     Input: list of avg holding times for each state
     Output: Q matrix with those holding times, where state S flows equally fast to all other states
     '''
