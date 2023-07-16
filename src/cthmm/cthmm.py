@@ -95,6 +95,8 @@ class BaseCTHMM:
         # Interpolate times later than or equal to times[0]
         observation_probs = self.get_observation_probs(observations)
         state_seq, probs_array = forward_backward(observation_probs, self.Q, times, startprob=self.startprob, endprob=self.endprob)
+        if probs_array.size == 0:
+            return [self.startprob for _ in times_to_interp]
         guesses = []
         i_known, i_interp = 0, 0
         startprob = probs_array[0].flatten()
