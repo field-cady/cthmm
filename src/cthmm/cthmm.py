@@ -111,8 +111,7 @@ class BaseCTHMM:
                 i_interp += 1
             elif t_interp<end_time:
                 #print('foo', t_interp, end_time, i_known, times[i_known], times[i_known+1])
-                if t_interp<times[i_known]: i_known+=1
-                elif times[i_known+1]<t_interp: i_known+=1
+                if times[i_known+1]<t_interp: i_known+=1
                 else:
                     # t_interp between times[i_known] and times[i_known+1]
                     dT1 = t_interp-times[i_known]
