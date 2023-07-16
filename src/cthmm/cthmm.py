@@ -272,7 +272,7 @@ class MultinomialCTHMM(BaseCTHMM):
 
 
 class GaussianCTHMM(BaseCTHMM):
-    ''' Observations are multinomial with values ranging from 0 to k-1 '''
+    ''' Observations are real-valued '''
     def __init__(self,
                  # States
                  n_states=None,
