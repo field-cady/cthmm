@@ -2,8 +2,13 @@
 
 This is a python library for training and applying
 [continuous-time markov hidden markov models](https://en.wikipedia.org/wiki/Continuous-time_Markov_chain) (CT-HMMs).
-They are a simple, but exceptionally powerful tool for extracting
-signal from a stream of noisy data.
+
+Normal HMMs apply to situations where timestamps are fundamentally discrete:
+words in text, base pairs in DNA, etc.
+But the real world works in continuous time (patients who are sick or healthy,
+machine that are operating in a given state, etc)!
+CT-HMMs generalize HMMs to this case, and critically they allow for
+observations that are taken at irregular time intervals.
 
 This library is available on [PyPI](https://pypi.org/project/cthmm/)
 and can be installed by
